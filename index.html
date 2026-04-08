@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS Pro Cloud - Thuận FinTech</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="top-bar">
+        <h1>QUẢN LÝ BÁN HÀNG CLOUD</h1>
+        <div class="date-picker">
+            <input type="date" id="workDate" onchange="loadDataByDate()">
+        </div>
+    </div>
+
+    <div class="stats-container">
+        <div class="stat-card income"><span>Doanh thu</span><h2 id="totalIncomeText">0đ</h2></div>
+        <div class="stat-card expense"><span>Chi phí</span><h2 id="totalExpenseText">0đ</h2></div>
+        <div class="stat-card profit"><span>Lợi nhuận</span><h2 id="totalProfitText">0đ</h2></div>
+    </div>
+
+    <div class="quick-action">
+        <button onclick="addManualTransaction('expense')" class="btn-exp" style="flex:1">- CHI NGOÀI (Nhập hàng, điện nước...)</button>
+        <button onclick="addManualTransaction('income')" class="btn-inc" style="flex:1">+ THU KHÁC</button>
+    </div>
+    
+    <div class="main-container">
+        <div class="section table-section">
+            <h3>🪑 Sơ đồ bàn</h3>
+            <div id="tableGrid" class="table-grid"></div>
+        </div>
+
+        <div class="section menu-section">
+            <h3>🍴 Thực đơn</h3>
+            <div id="menuGrid" class="menu-grid"></div>
+            <hr>
+            <h3>⚙️ Thêm món mới</h3>
+            <div class="admin-panel">
+                <input id="newMenuName" type="text" placeholder="Tên món">
+                <input id="newMenuPrice" type="number" placeholder="Giá">
+                <button onclick="updateMenu()" class="btn-inc" style="width:100%; margin-top:5px;">Thêm vào Menu</button>
+            </div>
+        </div>
+
+        <div class="section checkout-section">
+            <h3 id="selectedTableTitle">Chọn bàn...</h3>
+            <div id="currentCart" class="cart-box">
+                <ul id="cartItems"></ul>
+                <div class="cart-total">Tổng: <span id="cartTotal">0</span>đ</div>
+            </div>
+
+            <div id="qrArea" style="display:none; text-align:center; border: 2px solid #2980b9; padding:10px; border-radius:8px; margin-bottom:10px;">
+                <p style="font-size:11px; font-weight:bold;">QUÉT MÃ VIETQR</p>
+                <img id="vietQrImg" src="" style="width:160px; height:160px; margin:5px 0;">
+                <button onclick="confirmQR()" style="background:#27ae60; color:white; border:none; padding:5px; border-radius:4px; cursor:pointer; width:100%">Xác nhận khách đã trả</button>
+            </div>
+
+            <div class="btn-group">
+                <button id="btnPayCash" onclick="checkout('Tiền mặt')" class="btn-inc" disabled>Tiền mặt</button>
+                <button id="btnPayQR" onclick="showQR()" class="btn-exp" style="background:#2980b9 !important" disabled>VietQR</button>
+            </div>
+            
+            <div class="report-box"><canvas id="chart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="trend-section">
+        <h3>📈 Doanh thu 7 ngày qua</h3>
+        <div style="height: 250px;"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <div class="history-section">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h4>📜 Nhật ký giao dịch</h4>
+            <button onclick="exportToExcel()" class="btn-excel">📥 Xuất Excel</button>
+        </div>
+        <ul id="historyList"></ul>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
