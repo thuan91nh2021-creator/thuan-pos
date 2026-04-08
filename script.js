@@ -1,25 +1,20 @@
-// --- 1. KẾT NỐI HỆ THỐNG GOOGLE CLOUD & BẢO MẬT ---
+// --- 1. KẾT NỐI GOOGLE FIREBASE CLOUD ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = { 
-    apiKey: "AIzaSyCHBL7bVqQ__OSejzV_71343uqikoMW_Z4", 
-    authDomain: "thuan-pos-system.firebaseapp.com", 
-    projectId: "thuan-pos-system", 
-    storageBucket: "thuan-pos-system.firebasestorage.app", 
-    messagingSenderId: "325650195955", 
-    appId: "1:325650195955:web:14d2c60ced242b575b5e86" 
+  apiKey: "AIzaSyCHBL7bVqQ__OSejzV_71343uqikoMW_Z4", 
+  authDomain: "thuan-pos-system.firebaseapp.com", 
+  projectId: "thuan-pos-system", 
+  storageBucket: "thuan-pos-system.firebasestorage.app", 
+  messagingSenderId: "325650195955", 
+  appId: "1:325650195955:web:14d2c60ced242b575b5e86" 
 };
 
+// Khởi tạo Firebase và Database
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 const transactionsCol = collection(db, "transactions");
-
-let currentUser = null;
-let allData = []; 
-let chart, trendChart;
 
 // --- 2. CẤU HÌNH NGÂN HÀNG ---
 const BANK_CONFIG = { 
@@ -38,28 +33,18 @@ let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
 let tables = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 let tableStartTime = {};
 let selectedTable = null;
+let allData = []; 
+let chart, trendChart;
 
 document.getElementById('workDate').valueAsDate = new Date();
 
-// --- 4. KIỂM TRA ĐĂNG NHẬP & ĐỒNG BỘ CLOUD ---
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        currentUser = user;
-        document.getElementById('manHinhXacThuc').style.display = 'none';
-        
-        // Chỉ lấy dữ liệu của chính User này (nếu bạn có userId) hoặc lấy tất cả nếu chưa phân quyền
-        const q = query(transactionsCol, orderBy("timestamp", "desc"));
-        onSnapshot(q, (snapshot) => {
-            allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
-            window.loadDataByDate();
-        });
-    } else {
-        currentUser = null;
-        document.getElementById('manHinhXacThuc').style.display = 'flex';
-    }
+// --- 4. ĐỒNG BỘ DỮ LIỆU TỪ CLOUD (REAL-TIME) ---
+onSnapshot(query(transactionsCol, orderBy("timestamp", "desc")), (snapshot) => {
+    allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
+    window.loadDataByDate();
 });
 
-// --- 5. QUẢN LÝ GIAO DỊCH ---
+// --- 5. QUẢN LÝ GIAO DỊCH (THU/CHI) ---
 async function saveTransaction(reason, money, type) {
     let date = document.getElementById('workDate').value;
     const docData = {
@@ -69,8 +54,10 @@ async function saveTransaction(reason, money, type) {
         type: type,
         timestamp: Date.now()
     };
+    
     try {
         await addDoc(transactionsCol, docData);
+        console.log("Đã đồng bộ lên mây thành công!");
     } catch (e) {
         alert("Lỗi lưu Cloud: " + e.message);
     }
@@ -96,7 +83,7 @@ window.addManualTransaction = function(type) {
     }
 };
 
-// --- 6. QUẢN LÝ BÀN & THỰC ĐƠN ---
+// --- 6. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
 window.updateMenu = function() {
     let name = document.getElementById('newMenuName').value;
     let price = parseInt(document.getElementById('newMenuPrice').value);
@@ -138,21 +125,6 @@ function renderCart() {
     document.getElementById('cartTotal').innerText = total.toLocaleString();
 }
 
-window.selectTable = function(id) {
-    selectedTable = id;
-    document.getElementById('selectedTableTitle').innerText = "Bàn " + id + (tableStartTime[id] ? " ("+tableStartTime[id]+")" : "");
-    document.getElementById('btnPayCash').disabled = false;
-    document.getElementById('btnPayQR').disabled = false;
-    renderTables(); renderCart();
-};
-
-function renderTables() {
-    document.getElementById('tableGrid').innerHTML = Object.keys(tables).map(id => `
-        <div class="table-card ${selectedTable == id ? 'active' : ''} ${tables[id].length > 0 ? 'occupied' : ''}" 
-             onclick="selectTable(${id})">Bàn ${id} ${tableStartTime[id] ? '<br><small>'+tableStartTime[id]+'</small>' : ''}</div>
-    `).join('');
-}
-
 // --- 7. THANH TOÁN ---
 window.showQR = function() {
     if (!selectedTable || tables[selectedTable].length === 0) return;
@@ -178,8 +150,6 @@ window.checkout = function(method) {
     document.getElementById('btnPayQR').disabled = true;
     renderTables(); renderCart();
 };
-
-window.dangXuat = () => { if(confirm("Bạn muốn đăng xuất?")) signOut(auth); };
 
 // --- 8. BÁO CÁO & BIỂU ĐỒ ---
 window.loadDataByDate = function() {
@@ -207,6 +177,7 @@ window.loadDataByDate = function() {
 
 function updateCharts(inc, exp) {
     let ctx1 = document.getElementById("chart");
+    if (!ctx1) return;
     if (chart) chart.destroy();
     chart = new Chart(ctx1, {
         type: 'doughnut',
@@ -226,7 +197,6 @@ function updateTrendChart() {
         let d = new Date();
         d.setDate(d.getDate() - i);
         let dStr = d.toISOString().split('T')[0];
-        
         labels.push(d.getDate() + "/" + (d.getMonth() + 1));
         
         let dailySum = allData
@@ -254,6 +224,23 @@ function updateTrendChart() {
     });
 }
 
+window.selectTable = function(id) {
+    selectedTable = id;
+    document.getElementById('selectedTableTitle').innerText = "Bàn " + id + (tableStartTime[id] ? " ("+tableStartTime[id]+")" : "");
+    document.getElementById('btnPayCash').disabled = false;
+    document.getElementById('btnPayQR').disabled = false;
+    renderTables(); renderCart();
+};
+
+function renderTables() {
+    const grid = document.getElementById('tableGrid');
+    if(!grid) return;
+    grid.innerHTML = Object.keys(tables).map(id => `
+        <div class="table-card ${selectedTable == id ? 'active' : ''} ${tables[id].length > 0 ? 'occupied' : ''}" 
+             onclick="selectTable(${id})">Bàn ${id} ${tableStartTime[id] ? '<br><small>'+tableStartTime[id]+'</small>' : ''}</div>
+    `).join('');
+}
+
 window.exportToExcel = function() {
     let date = document.getElementById('workDate').value;
     let dayData = allData.filter(i => i.date === date);
@@ -265,5 +252,5 @@ window.exportToExcel = function() {
     link.click();
 };
 
-// Khởi chạy ban đầu
+// Khởi chạy
 renderMenu(); renderTables();
