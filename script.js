@@ -79,7 +79,7 @@ window.xuLyXacThuc = async (loai) => {
         } else {
             await signInWithEmailAndPassword(auth, email, pass);
         }
-    } catch (l) { alert("Lỗi xác thực: " + l.message); }
+    } catch (l) { alert("Lỗi: " + l.message); }
 };
 
 window.dangXuat = () => { if(confirm("Bạn muốn đăng xuất?")) signOut(auth); };
@@ -89,12 +89,13 @@ onAuthStateChanged(auth, (user) => {
     if (user) {
         nguoiDungHienTai = user;
         document.getElementById('manHinhXacThuc').style.display = 'none';
-        renderMenu(); renderTables(); // Chỉ chạy khi đã đăng nhập
+        renderMenu(); 
+        renderTables();
         
         const q = query(collection(db, "transactions"), where("userId", "==", user.uid), orderBy("timestamp", "desc"));
         onSnapshot(q, (snapshot) => {
             allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
-            window.loadDataByDate();
+            window.loadDataByDate(); // Tự động chạy báo cáo khi có thay đổi trên Cloud
         });
     } else {
         nguoiDungHienTai = null;
@@ -102,7 +103,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// --- 6. QUẢN LÝ GIAO DỊCH ---
+// --- 6. QUẢN LÝ GIAO DỊCH (LƯU LÊN MÂY) ---
 async function luuGiaoDichCloud(noiDung, soTien, loai) {
     if (!nguoiDungHienTai) return;
     const duLieu = {
@@ -119,13 +120,13 @@ async function luuGiaoDichCloud(noiDung, soTien, loai) {
 }
 
 window.deleteHistory = async (cloudId) => {
-    if(confirm("Xóa giao dịch vĩnh viễn?")) {
+    if(confirm("Xóa giao dịch vĩnh viễn trên Cloud?")) {
         await deleteDoc(doc(db, "transactions", cloudId));
     }
 };
 
 window.addManualTransaction = function(type) {
-    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi:");
+    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi (Vd: Nhập hàng):");
     let money = parseInt(prompt("Số tiền (VNĐ):"));
     if (reason && !isNaN(money)) {
         let now = new Date();
@@ -134,7 +135,7 @@ window.addManualTransaction = function(type) {
     }
 };
 
-// --- 7. QUẢN LÝ BÁN HÀNG ---
+// --- 7. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
 window.updateMenu = function() {
     let name = document.getElementById('newMenuName').value;
     let price = parseInt(document.getElementById('newMenuPrice').value);
@@ -178,7 +179,7 @@ function renderCart() {
     document.getElementById('cartTotal').innerText = total.toLocaleString();
 }
 
-// --- 8. THANH TOÁN ---
+// --- 8. THANH TOÁN (Hàm Quan Trọng Nhất) ---
 window.showQR = function() {
     if (!selectedTable || tables[selectedTable].length === 0) return;
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
@@ -190,23 +191,34 @@ window.showQR = function() {
 
 window.confirmQR = function() { window.checkout("VietQR"); };
 window.checkout = function(method) {
-    if(!selectedTable) return;
+    if(!selectedTable || tables[selectedTable].length === 0) return;
+
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
     let details = tables[selectedTable].map(i => i.name).join(", ");
     let end = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
+    // Lưu lên Cloud
     luuGiaoDichCloud(`[${tableStartTime[selectedTable]}-${end}] Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
     
-    tables[selectedTable] = []; tableStartTime[selectedTable] = null; selectedTable = null;
+    // Reset bàn sau thanh toán
+    tables[selectedTable] = []; 
+    tableStartTime[selectedTable] = null; 
+    selectedTable = null;
+    
     document.getElementById('qrArea').style.display = "none";
     document.getElementById('btnPayCash').disabled = true;
     document.getElementById('btnPayQR').disabled = true;
-    renderTables(); renderCart();
+    document.getElementById('selectedTableTitle').innerText = "Chọn bàn...";
+    
+    renderTables(); 
+    renderCart();
 };
 
 // --- 9. BÁO CÁO & BIỂU ĐỒ ---
 window.loadDataByDate = function() {
-    let date = document.getElementById('workDate').value;
+    let dateInput = document.getElementById('workDate');
+    if(!dateInput) return;
+    let date = dateInput.value;
     let dayData = allData.filter(i => i.date === date);
     let inc = 0, exp = 0;
     
@@ -233,7 +245,7 @@ function updateCharts(inc, exp) {
     if (chart) chart.destroy();
     chart = new Chart(ctx1, {
         type: 'doughnut',
-        data: { labels: ['Thu', 'Chi'], datasets: [{ data: [inc || 0.1, exp || 0.1], backgroundColor: ['#27ae60', '#e74c3c'] }] },
+        data: { labels: ['Thu', 'Chi'], datasets: [{ data: [inc || 0.1, exp || 0], backgroundColor: ['#27ae60', '#e74c3c'] }] },
         options: { responsive: true, maintainAspectRatio: false }
     });
 }
