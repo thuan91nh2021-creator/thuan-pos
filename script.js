@@ -1,4 +1,3 @@
-// --- 1. KẾT NỐI HỆ THỐNG GOOGLE CLOUD & BẢO MẬT ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -15,265 +14,149 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-let nguoiDungHienTai = null;
+let currentUser = null;
+let allData = [];
+let chart = null;
 
-// --- 2. CẤU HÌNH NGÂN HÀNG ---
-const BANK_CONFIG = { 
-    BANK_ID: "Vietcombank", 
-    ACCOUNT_NO: "1052274107", 
-    ACCOUNT_NAME: "NGUYEN THI NGOC THUAN" 
-};
+const BANK_CONFIG = { BANK_ID: "Vietcombank", ACCOUNT_NO: "1052274107", ACCOUNT_NAME: "NGUYEN THI NGOC THUAN" };
 
-// --- 3. KHỞI TẠO BIẾN HỆ THỐNG ---
 let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
     { id: 1, name: "Phở Đặc Biệt", price: 65000 },
-    { id: 2, name: "Cơm Tấm Sườn", price: 45000 },
-    { id: 3, name: "Cafe Muối", price: 35000 },
+    { id: 2, name: "Cafe Muối", price: 35000 },
+    { id: 3, name: "Bánh Mì", price: 30000 },
     { id: 4, name: "Trà Sữa Trân Châu", price: 40000 },
-    { id: 5, name: "Bánh Mì Thịt Nướng", price: 30000 },
-    { id: 6, name: "Gỏi Cuốn Tôm Thịt", price: 25000 },
-    { id: 7, name: "Bún Chả Hà Nội", price: 55000 },
-    { id: 8, name: "Mì Quảng", price: 50000 },
-    { id: 9, name: "Sinh Tố Bơ", price: 30000 },
-    { id: 10, name: "Chè Ba Màu", price: 20000 },
-    { id: 11, name: "Nước Mía", price: 15000 },
-    { id: 12, name: "Bánh Xèo", price: 40000 },
-    { id: 13, name: "Hủ Tiếu Nam Vang", price: 45000 },
-    { id: 14, name: "Cà Phê Sữa Đá", price: 30000 },
-    { id: 15, name: "Bánh Canh Cua", price: 55000 },
-    { id: 16, name: "Trà Đào Cam Sả", price: 35000 },
-    { id: 17, name: "Bún Bò Huế", price: 60000 },
-    { id: 18, name: "Sữa Chua Nếp Cẩm", price: 25000 },
-    { id: 19, name: "Cơm Gà Hải Nam", price: 50000 },
-    { id: 20, name: "Mì Xào Giòn", price: 45000 },
-    { id: 21, name: "Bánh Tráng Trộn", price: 20000 },
-    { id: 22, name: "Cháo Sườn", price: 30000 },
-    { id: 23, name: "Nước Ép Cần Tây", price: 25000 },
-    { id: 24, name: "Bún Thịt Nướng", price: 45000 },
-    { id: 25, name: "Trà Sữa Trân Châu Đường Đen", price: 40000 }
+    { id: 5, name: "Gỏi Cuốn", price: 25000 },
+    { id: 6, name: "Cháo Sườn", price: 45000 },
+    { id: 7, name: "Bún Chả", price: 55000 },
+    { id: 8, name: "Sinh Tố Bơ", price: 30000 },
+    { id: 9, name: "Cơm Tấm", price: 60000 },
+    { id: 10, name: "Nước Mía", price: 20000 },
+    { id: 11, name: "Bánh Xèo", price: 50000 },
+    { id: 12, name: "Mì Quảng", price: 55000 },
+    { id: 13, name: "Sữa Chua Trân Châu", price: 35000 },
+    { id: 14, name: "Bánh Canh", price: 45000 },
+    { id: 15, name: "Chè Ba Màu", price: 30000 }
 ];
-
 let tables = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 let tableStartTime = {};
 let selectedTable = null;
-let allData = []; 
-let chart;
 
-document.getElementById('workDate').valueAsDate = new Date();
-
-// --- 4. XỬ LÝ ĐĂNG NHẬP ---
-window.chuyenCheDo = (laDangNhap) => {
-    document.getElementById('tieuDeXacThuc').innerText = laDangNhap ? "Đăng nhập" : "Đăng ký tài khoản";
-    document.getElementById('cumNutDangNhap').style.display = laDangNhap ? "block" : "none";
-    document.getElementById('cumNutDangKy').style.display = laDangNhap ? "none" : "block";
+// GẮN CÁC HÀM VÀO WINDOW ĐỂ HTML GỌI ĐƯỢC
+window.chuyenCheDo = (laLogin) => {
+    document.getElementById('tieuDeXacThuc').innerText = laLogin ? "Chào mừng Thuận!" : "Đăng ký tài khoản";
+    document.getElementById('cumNutDangNhap').style.display = laLogin ? "block" : "none";
+    document.getElementById('cumNutDangKy').style.display = laLogin ? "none" : "block";
 };
 
 window.xuLyXacThuc = async (loai) => {
     const email = document.getElementById('emailUser').value;
     const pass = document.getElementById('passUser').value;
-    if (!email || !pass) return alert("Vui lòng nhập Email và Mật khẩu!");
     try {
-        if (loai === 'dang-ky') {
-            await createUserWithEmailAndPassword(auth, email, pass);
-            alert("Đăng ký thành công!");
-        } else {
-            await signInWithEmailAndPassword(auth, email, pass);
-        }
-    } catch (l) { alert("Lỗi: " + l.message); }
+        if (loai === 'dang-ky') await createUserWithEmailAndPassword(auth, email, pass);
+        else await signInWithEmailAndPassword(auth, email, pass);
+    } catch (e) { alert("Lỗi: " + e.message); }
 };
 
-window.dangXuat = () => { if(confirm("Bạn muốn đăng xuất?")) signOut(auth); };
+window.dangXuat = () => { if(confirm("Bạn muốn thoát?")) signOut(auth); };
 
-// --- 5. KIỂM TRA TRẠNG THÁI & ĐỒNG BỘ ---
 onAuthStateChanged(auth, (user) => {
     if (user) {
-        nguoiDungHienTai = user;
+        currentUser = user;
         document.getElementById('manHinhXacThuc').style.display = 'none';
-        renderMenu(); 
-        renderTables();
-        
+        renderMenu(); renderTables();
         const q = query(collection(db, "transactions"), where("userId", "==", user.uid), orderBy("timestamp", "desc"));
         onSnapshot(q, (snapshot) => {
             allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
-            window.loadDataByDate(); // Tự động chạy báo cáo khi có thay đổi trên Cloud
+            window.loadDataByDate();
         });
     } else {
-        nguoiDungHienTai = null;
+        currentUser = null;
         document.getElementById('manHinhXacThuc').style.display = 'flex';
     }
 });
 
-// --- 6. QUẢN LÝ GIAO DỊCH (LƯU LÊN MÂY) ---
-async function luuGiaoDichCloud(noiDung, soTien, loai) {
-    if (!nguoiDungHienTai) return;
-    const duLieu = {
-        userId: nguoiDungHienTai.uid,
+async function luuCloud(reason, money, type) {
+    if (!currentUser) return;
+    await addDoc(collection(db, "transactions"), {
+        userId: currentUser.uid,
         date: document.getElementById('workDate').value,
-        reason: noiDung,
-        money: soTien,
-        type: loai,
-        timestamp: Date.now()
-    };
-    try {
-        await addDoc(collection(db, "transactions"), duLieu);
-    } catch (e) { alert("Lỗi lưu Cloud: " + e.message); }
-}
-
-window.deleteHistory = async (cloudId) => {
-    if(confirm("Xóa giao dịch vĩnh viễn trên Cloud?")) {
-        await deleteDoc(doc(db, "transactions", cloudId));
-    }
-};
-
-window.addManualTransaction = function(type) {
-    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi (Vd: Nhập hàng):");
-    let money = parseInt(prompt("Số tiền (VNĐ):"));
-    if (reason && !isNaN(money)) {
-        let now = new Date();
-        let thoiGian = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
-        luuGiaoDichCloud(`[${thoiGian}][Ngoài] ${reason}`, money, type);
-    }
-};
-
-// --- 7. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
-window.updateMenu = function() {
-    let name = document.getElementById('newMenuName').value;
-    let price = parseInt(document.getElementById('newMenuPrice').value);
-    if (!name || !price) return alert("Nhập đủ tên và giá!");
-    menu.push({ id: Date.now(), name, price });
-    localStorage.setItem('restaurantMenu', JSON.stringify(menu));
-    renderMenu();
-};
-
-function renderMenu() {
-    const grid = document.getElementById('menuGrid');
-    if(!grid) return;
-    grid.innerHTML = menu.map(item => `
-        <div class="menu-item" onclick="addToCart(${item.id})">${item.name}<br><b>${item.price.toLocaleString()}đ</b></div>
-    `).join('');
-}
-
-window.addToCart = function(prodId) {
-    if (!selectedTable) return alert("Hãy chọn bàn!");
-    if (tables[selectedTable].length === 0) {
-        tableStartTime[selectedTable] = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    }
-    const item = menu.find(p => p.id === prodId);
-    tables[selectedTable].push({...item, cartId: Date.now()});
-    renderCart(); renderTables(); window.selectTable(selectedTable);
-};
-
-window.removeFromCart = function(cartId) {
-    tables[selectedTable] = tables[selectedTable].filter(i => i.cartId !== cartId);
-    if (tables[selectedTable].length === 0) tableStartTime[selectedTable] = null;
-    renderCart(); renderTables(); window.selectTable(selectedTable);
-};
-
-function renderCart() {
-    if (selectedTable === null) return;
-    let total = 0;
-    document.getElementById('cartItems').innerHTML = tables[selectedTable].map(i => {
-        total += i.price;
-        return `<li><span>${i.name}</span> <span>${i.price.toLocaleString()}đ <button onclick="removeFromCart(${i.cartId})" style="color:red; border:none; background:none; cursor:pointer;">✖</button></span></li>`;
-    }).join('');
-    document.getElementById('cartTotal').innerText = total.toLocaleString();
-}
-
-// --- 8. THANH TOÁN (Hàm Quan Trọng Nhất) ---
-window.showQR = function() {
-    if (!selectedTable || tables[selectedTable].length === 0) return;
-    let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
-    let desc = `Ban%20${selectedTable}%20thanh%20toan`.replace(/\s/g, '%20');
-    let qrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact.png?amount=${total}&addInfo=${desc}&accountName=${BANK_CONFIG.ACCOUNT_NAME}`;
-    document.getElementById('vietQrImg').src = qrUrl;
-    document.getElementById('qrArea').style.display = "block";
-};
-
-window.confirmQR = function() { window.checkout("VietQR"); };
-window.checkout = function(method) {
-    if(!selectedTable || tables[selectedTable].length === 0) return;
-
-    let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
-    let details = tables[selectedTable].map(i => i.name).join(", ");
-    let end = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    
-    // Lưu lên Cloud
-    luuGiaoDichCloud(`[${tableStartTime[selectedTable]}-${end}] Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
-    
-    // Reset bàn sau thanh toán
-    tables[selectedTable] = []; 
-    tableStartTime[selectedTable] = null; 
-    selectedTable = null;
-    
-    document.getElementById('qrArea').style.display = "none";
-    document.getElementById('btnPayCash').disabled = true;
-    document.getElementById('btnPayQR').disabled = true;
-    document.getElementById('selectedTableTitle').innerText = "Chọn bàn...";
-    
-    renderTables(); 
-    renderCart();
-};
-
-// --- 9. BÁO CÁO & BIỂU ĐỒ ---
-window.loadDataByDate = function() {
-    let dateInput = document.getElementById('workDate');
-    if(!dateInput) return;
-    let date = dateInput.value;
-    let dayData = allData.filter(i => i.date === date);
-    let inc = 0, exp = 0;
-    
-    let html = dayData.map(i => {
-        if (i.type === 'income') inc += i.money; else exp += i.money;
-        return `<li>
-            <span style="font-size:12px; width:70%">${i.reason}</span> 
-            <b>${i.type=='income'?'+':'-'}${i.money.toLocaleString()}đ 
-            <button onclick="deleteHistory('${i.cloudId}')" style="border:none; background:none; cursor:pointer;">🗑️</button></b>
-        </li>`;
-    }).join('');
-    
-    document.getElementById('totalIncomeText').innerText = inc.toLocaleString() + "đ";
-    document.getElementById('totalExpenseText').innerText = exp.toLocaleString() + "đ";
-    document.getElementById('totalProfitText').innerText = (inc - exp).toLocaleString() + "đ";
-    document.getElementById('historyList').innerHTML = html || "<li>Trống.</li>";
-    updateCharts(inc, exp);
-};
-
-function updateCharts(inc, exp) {
-    const canvas = document.getElementById("chart");
-    if (!canvas) return;
-    let ctx1 = canvas.getContext("2d");
-    if (chart) chart.destroy();
-    chart = new Chart(ctx1, {
-        type: 'doughnut',
-        data: { labels: ['Thu', 'Chi'], datasets: [{ data: [inc || 0.1, exp || 0], backgroundColor: ['#27ae60', '#e74c3c'] }] },
-        options: { responsive: true, maintainAspectRatio: false }
+        reason, money, type, timestamp: Date.now()
     });
 }
 
-window.selectTable = function(id) {
+window.addManualTransaction = (type) => {
+    let reason = prompt("Nội dung:");
+    let money = parseInt(prompt("Số tiền:"));
+    if (reason && !isNaN(money)) luuCloud(reason, money, type);
+};
+
+window.addToCart = (id) => {
+    if (!selectedTable) return alert("Chọn bàn!");
+    if (!tableStartTime[selectedTable]) tableStartTime[selectedTable] = new Date().toLocaleTimeString();
+    const item = menu.find(m => m.id === id);
+    tables[selectedTable].push({...item, cartId: Date.now()});
+    renderCart(); renderTables();
+};
+
+window.selectTable = (id) => {
     selectedTable = id;
-    document.getElementById('selectedTableTitle').innerText = "Bàn " + id + (tableStartTime[id] ? " ("+tableStartTime[id]+")" : "");
+    document.getElementById('selectedTableTitle').innerText = "Bàn " + id;
     document.getElementById('btnPayCash').disabled = false;
     document.getElementById('btnPayQR').disabled = false;
+    renderCart(); renderTables();
+};
+
+window.checkout = async (method) => {
+    let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
+    let details = tables[selectedTable].map(i => i.name).join(", ");
+    await luuCloud(`Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
+    tables[selectedTable] = []; tableStartTime[selectedTable] = null;
+    document.getElementById('qrArea').style.display = "none";
     renderTables(); renderCart();
 };
 
-function renderTables() {
-    const grid = document.getElementById('tableGrid');
-    if(!grid) return;
-    grid.innerHTML = Object.keys(tables).map(id => `
-        <div class="table-card ${selectedTable == id ? 'active' : ''} ${tables[id].length > 0 ? 'occupied' : ''}" 
-             onclick="selectTable(${id})">Bàn ${id} ${tableStartTime[id] ? '<br><small>'+tableStartTime[id]+'</small>' : ''}</div>
-    `).join('');
+window.showQR = () => {
+    let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
+    document.getElementById('vietQrImg').src = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact.png?amount=${total}&addInfo=Ban%20${selectedTable}`;
+    document.getElementById('qrArea').style.display = "block";
+};
+
+window.confirmQR = () => window.checkout("VietQR");
+
+window.loadDataByDate = () => {
+    let date = document.getElementById('workDate').value;
+    let filtered = allData.filter(d => d.date === date);
+    let inc = 0, exp = 0;
+    document.getElementById('historyList').innerHTML = filtered.map(d => {
+        if (d.type === 'income') inc += d.money; else exp += d.money;
+        return `<li>${d.reason} <b>${d.money.toLocaleString()}đ <button onclick="window.deleteHistory('${d.cloudId}')">🗑️</button></b></li>`;
+    }).join('');
+    document.getElementById('totalIncomeText').innerText = inc.toLocaleString() + "đ";
+    document.getElementById('totalExpenseText').innerText = exp.toLocaleString() + "đ";
+    document.getElementById('totalProfitText').innerText = (inc - exp).toLocaleString() + "đ";
+    updateCharts(inc, exp);
+};
+
+window.deleteHistory = async (id) => { if(confirm("Xóa?")) await deleteDoc(doc(db, "transactions", id)); };
+
+function renderMenu() {
+    document.getElementById('menuGrid').innerHTML = menu.map(m => `<div class="menu-item" onclick="window.addToCart(${m.id})">${m.name}<br>${m.price.toLocaleString()}đ</div>`).join('');
 }
 
-window.exportToExcel = function() {
-    let date = document.getElementById('workDate').value;
-    let dayData = allData.filter(i => i.date === date);
-    let csv = "\uFEFFNgày,Nội dung,Tiền,Loại\n" + dayData.map(i => `${i.date},${i.reason.replace(/,/g, '-')},${i.money},${i.type}`).join("\n");
-    let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    let link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Bao_cao_${date}.csv`;
-    link.click();
-};
+function renderTables() {
+    document.getElementById('tableGrid').innerHTML = Object.keys(tables).map(id => `<div class="table-card ${selectedTable==id?'active':''} ${tables[id].length>0?'occupied':''}" onclick="window.selectTable(${id})">Bàn ${id}</div>`).join('');
+}
+
+function renderCart() {
+    let total = tables[selectedTable]?.reduce((s, i) => s + i.price, 0) || 0;
+    document.getElementById('cartItems').innerHTML = tables[selectedTable]?.map(i => `<li>${i.name} <span>${i.price.toLocaleString()}đ</span></li>`).join('') || "";
+    document.getElementById('cartTotal').innerText = total.toLocaleString();
+}
+
+function updateCharts(inc, exp) {
+    let ctx = document.getElementById("chart").getContext("2d");
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, { type: 'doughnut', data: { labels: ['Thu', 'Chi'], datasets: [{ data: [inc || 1, exp || 0], backgroundColor: ['#27ae60', '#e74c3c'] }] } });
+}
+
+document.getElementById('workDate').valueAsDate = new Date();
