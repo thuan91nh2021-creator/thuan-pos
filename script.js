@@ -1,6 +1,6 @@
+// --- 1. KẾT NỐI GOOGLE FIREBASE CLOUD ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = { 
   apiKey: "AIzaSyCHBL7bVqQ__OSejzV_71343uqikoMW_Z4", 
@@ -10,55 +10,90 @@ const firebaseConfig = {
   messagingSenderId: "325650195955", 
   appId: "1:325650195955:web:14d2c60ced242b575b5e86" 
 };
-{
+
+// Khởi tạo Firebase và Database
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
-let currentUser = null;
-let allData = []; 
-let chart, trendChart;
-};
-const BANK_CONFIG = {
-    BANK_ID: "VCB",           
-    ACCOUNT_NO: "1052274017", 
-    ACCOUNT_NAME: "NGUYEN THI NGOC THUAN"
+const transactionsCol = collection(db, "transactions");
+
+// --- 2. CẤU HÌNH NGÂN HÀNG ---
+const BANK_CONFIG = { 
+    BANK_ID: "MB", 
+    ACCOUNT_NO: "123456789", 
+    ACCOUNT_NAME: "NGUYEN THI NGOC THUAN" 
 };
 
+// --- 3. KHỞI TẠO BIẾN ---
 let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
     { id: 1, name: "Phở Đặc Biệt", price: 65000 },
-    { id: 2, name: "Cafe Muối", price: 35000 }
+    { id: 2, name: "Cơm Tấm Sườn", price: 45000 },
+    { id: 3, name: "Cafe Muối", price: 35000 }
 ];
 
 let tables = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 let tableStartTime = {};
 let selectedTable = null;
+let allData = []; // Dữ liệu sẽ đồng bộ từ Cloud về đây
 let chart, trendChart;
-let allData = JSON.parse(localStorage.getItem('restaurantProData')) || [];
 
 document.getElementById('workDate').valueAsDate = new Date();
 
-// --- THU CHI NGOÀI ---
-function addManualTransaction(type) {
-    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi ngoài (Vd: Nhập hàng):");
+// --- 4. ĐỒNG BỘ DỮ LIỆU TỪ CLOUD (REAL-TIME) ---
+// Mỗi khi Cloud có thay đổi, hàm này tự chạy để cập nhật báo cáo
+onSnapshot(query(transactionsCol, orderBy("timestamp", "desc")), (snapshot) => {
+    allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
+    loadDataByDate();
+});
+
+// --- 5. QUẢN LÝ GIAO DỊCH (THU/CHI) ---
+async function saveTransaction(reason, money, type) {
+    let date = document.getElementById('workDate').value;
+    const docData = {
+        date: date,
+        reason: reason,
+        money: money,
+        type: type,
+        timestamp: Date.now()
+    };
+    
+    try {
+        await addDoc(transactionsCol, docData);
+        console.log("Đã đồng bộ lên mây thành công!");
+    } catch (e) {
+        alert("Lỗi lưu Cloud: " + e.message);
+    }
+}
+
+async function deleteHistory(cloudId) {
+    if(confirm("Xóa giao dịch này vĩnh viễn trên Cloud?")) {
+        try {
+            await deleteDoc(doc(db, "transactions", cloudId));
+        } catch (e) {
+            alert("Lỗi xóa: " + e.message);
+        }
+    }
+}
+
+// Hàm nhập thu chi ngoài danh mục
+window.addManualTransaction = function(type) {
+    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi (Vd: Nhập hàng):");
     let money = parseInt(prompt("Số tiền (VNĐ):"));
     if (reason && !isNaN(money)) {
         let now = new Date();
         let time = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
         saveTransaction(`[${time}][Ngoài] ${reason}`, money, type);
     }
-}
+};
 
-// --- QUẢN LÝ MENU ---
-function updateMenu() {
+// --- 6. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
+window.updateMenu = function() {
     let name = document.getElementById('newMenuName').value;
     let price = parseInt(document.getElementById('newMenuPrice').value);
     if (!name || !price) return alert("Nhập đủ tên và giá!");
     menu.push({ id: Date.now(), name, price });
     localStorage.setItem('restaurantMenu', JSON.stringify(menu));
-    document.getElementById('newMenuName').value = "";
-    document.getElementById('newMenuPrice').value = "";
     renderMenu();
-}
+};
 
 function renderMenu() {
     document.getElementById('menuGrid').innerHTML = menu.map(item => `
@@ -66,26 +101,24 @@ function renderMenu() {
     `).join('');
 }
 
-// --- GIỎ HÀNG & XÓA MÓN ---
-function addToCart(prodId) {
+window.addToCart = function(prodId) {
     if (!selectedTable) return alert("Hãy chọn bàn!");
     if (tables[selectedTable].length === 0) {
-        let now = new Date();
-        tableStartTime[selectedTable] = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        tableStartTime[selectedTable] = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     }
     const item = menu.find(p => p.id === prodId);
     tables[selectedTable].push({...item, cartId: Date.now()});
     renderCart(); renderTables(); selectTable(selectedTable);
-}
+};
 
-function removeFromCart(cartId) {
+window.removeFromCart = function(cartId) {
     tables[selectedTable] = tables[selectedTable].filter(i => i.cartId !== cartId);
     if (tables[selectedTable].length === 0) tableStartTime[selectedTable] = null;
     renderCart(); renderTables(); selectTable(selectedTable);
-}
+};
 
 function renderCart() {
-    if (!selectedTable) return;
+    if (selectedTable === null) return;
     let total = 0;
     document.getElementById('cartItems').innerHTML = tables[selectedTable].map(i => {
         total += i.price;
@@ -94,61 +127,52 @@ function renderCart() {
     document.getElementById('cartTotal').innerText = total.toLocaleString();
 }
 
-// --- THANH TOÁN ---
-function showQR() {
+// --- 7. THANH TOÁN ---
+window.showQR = function() {
     if (!selectedTable || tables[selectedTable].length === 0) return;
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
     let desc = `Ban%20${selectedTable}%20thanh%20toan`.replace(/\s/g, '%20');
     let qrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact.png?amount=${total}&addInfo=${desc}&accountName=${BANK_CONFIG.ACCOUNT_NAME}`;
     document.getElementById('vietQrImg').src = qrUrl;
     document.getElementById('qrArea').style.display = "block";
-}
+};
 
-function confirmQR() { checkout("VietQR"); }
-
-function checkout(method) {
+window.confirmQR = function() { checkout("VietQR"); };
+window.checkout = function(method) {
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
     let details = tables[selectedTable].map(i => i.name).join(", ");
-    let end = new Date().getHours().toString().padStart(2, '0') + ":" + new Date().getMinutes().toString().padStart(2, '0');
+    let end = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
     saveTransaction(`[${tableStartTime[selectedTable]}-${end}] Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
+    
     tables[selectedTable] = []; tableStartTime[selectedTable] = null; selectedTable = null;
     document.getElementById('qrArea').style.display = "none";
     document.getElementById('btnPayCash').disabled = true;
     document.getElementById('btnPayQR').disabled = true;
     renderTables(); renderCart();
-}
+};
 
-function saveTransaction(reason, money, type) {
-    let date = document.getElementById('workDate').value;
-    allData.push({ id: Date.now(), date, reason, money, type });
-    localStorage.setItem('restaurantProData', JSON.stringify(allData));
-    loadDataByDate();
-}
-
-function deleteHistory(id) {
-    if(confirm("Xóa giao dịch này?")) {
-        allData = allData.filter(i => i.id !== id);
-        localStorage.setItem('restaurantProData', JSON.stringify(allData));
-        loadDataByDate();
-    }
-}
-
-// --- BÁO CÁO & BIỂU ĐỒ ---
-function loadDataByDate() {
+// --- 8. BÁO CÁO & BIỂU ĐỒ ---
+window.loadDataByDate = function() {
     let date = document.getElementById('workDate').value;
     let dayData = allData.filter(i => i.date === date);
     let inc = 0, exp = 0;
+    
     let html = dayData.map(i => {
         if (i.type === 'income') inc += i.money; else exp += i.money;
-        return `<li><span style="font-size:12px; width:70%">${i.reason}</span> <b>${i.type=='income'?'+':'-'}${i.money.toLocaleString()}đ <button onclick="deleteHistory(${i.id})" style="border:none; background:none; cursor:pointer;">🗑️</button></b></li>`;
-    }).reverse().join('');
+        return `<li>
+            <span style="font-size:12px; width:70%">${i.reason}</span> 
+            <b>${i.type=='income'?'+':'-'}${i.money.toLocaleString()}đ 
+            <button onclick="deleteHistory('${i.cloudId}')" style="border:none; background:none; cursor:pointer;">🗑️</button></b>
+        </li>`;
+    }).join(''); // Không cần reverse vì Firestore query đã orderBy desc
     
     document.getElementById('totalIncomeText').innerText = inc.toLocaleString() + "đ";
     document.getElementById('totalExpenseText').innerText = exp.toLocaleString() + "đ";
     document.getElementById('totalProfitText').innerText = (inc - exp).toLocaleString() + "đ";
     document.getElementById('historyList').innerHTML = html || "<li>Trống.</li>";
     updateCharts(inc, exp);
-}
+};
 
 function updateCharts(inc, exp) {
     let ctx1 = document.getElementById("chart");
@@ -158,30 +182,15 @@ function updateCharts(inc, exp) {
         data: { labels: ['Thu', 'Chi'], datasets: [{ data: [inc || 0.1, exp || 0.1], backgroundColor: ['#27ae60', '#e74c3c'] }] },
         options: { responsive: true, maintainAspectRatio: false }
     });
-
-    const labels = []; const data = [];
-    for (let i = 6; i >= 0; i--) {
-        let d = new Date(); d.setDate(d.getDate() - i);
-        let dStr = d.toISOString().split('T')[0];
-        labels.push(d.getDate() + "/" + (d.getMonth() + 1));
-        data.push(allData.filter(x => x.date === dStr && x.type === 'income').reduce((s, x) => s + x.money, 0));
-    }
-    let ctx2 = document.getElementById("trendChart");
-    if (trendChart) trendChart.destroy();
-    trendChart = new Chart(ctx2, {
-        type: 'line',
-        data: { labels: labels, datasets: [{ label: 'Doanh thu', data: data, borderColor: '#3498db', fill: true, backgroundColor: 'rgba(52, 152, 219, 0.1)', tension: 0.4 }] },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
 }
 
-function selectTable(id) {
+window.selectTable = function(id) {
     selectedTable = id;
     document.getElementById('selectedTableTitle').innerText = "Bàn " + id + (tableStartTime[id] ? " ("+tableStartTime[id]+")" : "");
     document.getElementById('btnPayCash').disabled = false;
     document.getElementById('btnPayQR').disabled = false;
     renderTables(); renderCart();
-}
+};
 
 function renderTables() {
     document.getElementById('tableGrid').innerHTML = Object.keys(tables).map(id => `
@@ -190,7 +199,7 @@ function renderTables() {
     `).join('');
 }
 
-function exportToExcel() {
+window.exportToExcel = function() {
     let date = document.getElementById('workDate').value;
     let dayData = allData.filter(i => i.date === date);
     let csv = "\uFEFFNgày,Nội dung,Tiền,Loại\n" + dayData.map(i => `${i.date},${i.reason.replace(/,/g, '-')},${i.money},${i.type}`).join("\n");
@@ -199,6 +208,7 @@ function exportToExcel() {
     link.href = URL.createObjectURL(blob);
     link.download = `Bao_cao_${date}.csv`;
     link.click();
-}
+};
 
-renderMenu(); renderTables(); loadDataByDate();
+// Khởi chạy
+renderMenu(); renderTables();
