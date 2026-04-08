@@ -8,6 +8,28 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="manHinhXacThuc" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.98); z-index:9999; display:flex; align-items:center; justify-content:center; font-family: sans-serif;">
+    <div style="width:350px; padding:40px; border-radius:20px; background: white; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #eee;">
+        <h2 id="tieuDeXacThuc" style="color: #2c3e50; margin-bottom: 25px;">Chào mừng bạn!</h2>
+        
+        <input type="email" id="emailUser" placeholder="Địa chỉ Email" style="width:100%; padding:12px; margin-bottom:15px; border-radius:8px; border:1px solid #ddd; box-sizing: border-box;">
+        <input type="password" id="passUser" placeholder="Mật khẩu (ít nhất 6 ký tự)" style="width:100%; padding:12px; margin-bottom:25px; border-radius:8px; border:1px solid #ddd; box-sizing: border-box;">
+        
+        <div id="cumNutDangNhap">
+            <button onclick="xuLyXacThuc('dang-nhap')" style="width:100%; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px;">ĐĂNG NHẬP</button>
+            <p style="font-size:13px; color:#7f8c8d;">Chưa có tài khoản? <a href="#" onclick="chuyenCheDo(false)" style="color:#2980b9; text-decoration:none; font-weight:bold;">Đăng ký ngay</a></p>
+        </div>
+        
+        <div id="cumNutDangKy" style="display:none;">
+            <button onclick="xuLyXacThuc('dang-ky')" style="width:100%; padding:12px; background:#2980b9; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px;">TẠO TÀI KHOẢN</button>
+            <p style="font-size:13px; color:#7f8c8d;">Đã có tài khoản? <a href="#" onclick="chuyenCheDo(true)" style="color:#27ae60; text-decoration:none; font-weight:bold;">Quay lại Đăng nhập</a></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Nhớ sửa dòng gọi script của bạn thành: <script type="module" src="script.js"><\/script>
+</script>
     <div class="top-bar">
         <h1>QUẢN LÝ BÁN HÀNG CLOUD</h1>
         <div class="date-picker">

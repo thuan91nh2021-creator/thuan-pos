@@ -1,6 +1,7 @@
-// --- 1. KẾT NỐI GOOGLE FIREBASE CLOUD ---
+// --- 1. KẾT NỐI HỆ THỐNG GOOGLE CLOUD & BẢO MẬT ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = { 
   apiKey: "AIzaSyCHBL7bVqQ__OSejzV_71343uqikoMW_Z4", 
@@ -11,10 +12,10 @@ const firebaseConfig = {
   appId: "1:325650195955:web:14d2c60ced242b575b5e86" 
 };
 
-// Khởi tạo Firebase và Database
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const transactionsCol = collection(db, "transactions");
+const auth = getAuth(app);
+let nguoiDungHienTai = null;
 
 // --- 2. CẤU HÌNH NGÂN HÀNG ---
 const BANK_CONFIG = { 
@@ -23,7 +24,7 @@ const BANK_CONFIG = {
     ACCOUNT_NAME: "NGUYEN THI NGOC THUAN" 
 };
 
-// --- 3. KHỞI TẠO BIẾN ---
+// --- 3. KHỞI TẠO BIẾN HỆ THỐNG ---
 let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
     { id: 1, name: "Phở Đặc Biệt", price: 65000 },
     { id: 2, name: "Cơm Tấm Sườn", price: 45000 },
@@ -34,7 +35,7 @@ let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
     { id: 7, name: "Bún Chả Hà Nội", price: 55000 },
     { id: 8, name: "Mì Quảng", price: 50000 },
     { id: 9, name: "Sinh Tố Bơ", price: 30000 },
-    { id: 10, name: "Chè Ba Màu", price: 20000 },  
+    { id: 10, name: "Chè Ba Màu", price: 20000 },
     { id: 11, name: "Nước Mía", price: 15000 },
     { id: 12, name: "Bánh Xèo", price: 40000 },
     { id: 13, name: "Hủ Tiếu Nam Vang", price: 45000 },
@@ -55,59 +56,85 @@ let menu = JSON.parse(localStorage.getItem('restaurantMenu')) || [
 let tables = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 let tableStartTime = {};
 let selectedTable = null;
-let allData = []; // Dữ liệu sẽ đồng bộ từ Cloud về đây
-let chart, trendChart;
+let allData = []; 
+let chart;
 
 document.getElementById('workDate').valueAsDate = new Date();
 
-// --- 4. ĐỒNG BỘ DỮ LIỆU TỪ CLOUD (REAL-TIME) ---
-// Mỗi khi Cloud có thay đổi, hàm này tự chạy để cập nhật báo cáo
-onSnapshot(query(transactionsCol, orderBy("timestamp", "desc")), (snapshot) => {
-    allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
-    loadDataByDate();
+// --- 4. XỬ LÝ ĐĂNG NHẬP (TIẾNG VIỆT) ---
+window.chuyenCheDo = (laDangNhap) => {
+    document.getElementById('tieuDeXacThuc').innerText = laDangNhap ? "Đăng nhập" : "Đăng ký tài khoản";
+    document.getElementById('cumNutDangNhap').style.display = laDangNhap ? "block" : "none";
+    document.getElementById('cumNutDangKy').style.display = laDangNhap ? "none" : "block";
+};
+
+window.xuLyXacThuc = async (loai) => {
+    const email = document.getElementById('emailUser').value;
+    const pass = document.getElementById('passUser').value;
+    if (!email || !pass) return alert("Vui lòng nhập Email và Mật khẩu!");
+    try {
+        if (loai === 'dang-ky') {
+            await createUserWithEmailAndPassword(auth, email, pass);
+            alert("Đăng ký thành công!");
+        } else {
+            await signInWithEmailAndPassword(auth, email, pass);
+        }
+    } catch (l) { alert("Lỗi: " + l.message); }
+};
+
+window.dangXuat = () => { if(confirm("Bạn muốn đăng xuất?")) signOut(auth); };
+
+// --- 5. KIỂM TRA TRẠNG THÁI & ĐỒNG BỘ DỮ LIỆU RIÊNG TƯ ---
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        nguoiDungHienTai = user;
+        document.getElementById('manHinhXacThuc').style.display = 'none';
+        
+        // Lấy dữ liệu Cloud (chỉ của riêng người dùng này)
+        const q = query(collection(db, "transactions"), where("userId", "==", user.uid), orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
+            loadDataByDate();
+        });
+    } else {
+        nguoiDungHienTai = null;
+        document.getElementById('manHinhXacThuc').style.display = 'flex';
+    }
 });
 
-// --- 5. QUẢN LÝ GIAO DỊCH (THU/CHI) ---
-async function saveTransaction(reason, money, type) {
-    let date = document.getElementById('workDate').value;
-    const docData = {
-        date: date,
-        reason: reason,
-        money: money,
-        type: type,
+// --- 6. QUẢN LÝ GIAO DỊCH (LƯU LÊN MÂY) ---
+async function luuGiaoDichCloud(noiDung, soTien, loai) {
+    if (!nguoiDungHienTai) return;
+    const duLieu = {
+        userId: nguoiDungHienTai.uid,
+        date: document.getElementById('workDate').value,
+        reason: noiDung,
+        money: soTien,
+        type: loai,
         timestamp: Date.now()
     };
-    
     try {
-        await addDoc(transactionsCol, docData);
-        console.log("Đã đồng bộ lên mây thành công!");
-    } catch (e) {
-        alert("Lỗi lưu Cloud: " + e.message);
-    }
+        await addDoc(collection(db, "transactions"), duLieu);
+    } catch (e) { alert("Lỗi lưu Cloud: " + e.message); }
 }
 
-async function deleteHistory(cloudId) {
-    if(confirm("Xóa giao dịch này vĩnh viễn trên Cloud?")) {
-        try {
-            await deleteDoc(doc(db, "transactions", cloudId));
-        } catch (e) {
-            alert("Lỗi xóa: " + e.message);
-        }
+window.deleteHistory = async (cloudId) => {
+    if(confirm("Xóa giao dịch vĩnh viễn trên Cloud?")) {
+        await deleteDoc(doc(db, "transactions", cloudId));
     }
-}
+};
 
-// Hàm nhập thu chi ngoài danh mục
 window.addManualTransaction = function(type) {
     let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi (Vd: Nhập hàng):");
     let money = parseInt(prompt("Số tiền (VNĐ):"));
     if (reason && !isNaN(money)) {
         let now = new Date();
-        let time = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
-        saveTransaction(`[${time}][Ngoài] ${reason}`, money, type);
+        let thoiGian = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        luuGiaoDichCloud(`[${thoiGian}][Ngoài] ${reason}`, money, type);
     }
 };
 
-// --- 6. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
+// --- 7. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
 window.updateMenu = function() {
     let name = document.getElementById('newMenuName').value;
     let price = parseInt(document.getElementById('newMenuPrice').value);
@@ -149,7 +176,7 @@ function renderCart() {
     document.getElementById('cartTotal').innerText = total.toLocaleString();
 }
 
-// --- 7. THANH TOÁN ---
+// --- 8. THANH TOÁN ---
 window.showQR = function() {
     if (!selectedTable || tables[selectedTable].length === 0) return;
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
@@ -165,7 +192,7 @@ window.checkout = function(method) {
     let details = tables[selectedTable].map(i => i.name).join(", ");
     let end = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
-    saveTransaction(`[${tableStartTime[selectedTable]}-${end}] Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
+    luuGiaoDichCloud(`[${tableStartTime[selectedTable]}-${end}] Bàn ${selectedTable} (${method}): ${details}`, total, 'income');
     
     tables[selectedTable] = []; tableStartTime[selectedTable] = null; selectedTable = null;
     document.getElementById('qrArea').style.display = "none";
@@ -174,7 +201,7 @@ window.checkout = function(method) {
     renderTables(); renderCart();
 };
 
-// --- 8. BÁO CÁO & BIỂU ĐỒ ---
+// --- 9. BÁO CÁO & BIỂU ĐỒ ---
 window.loadDataByDate = function() {
     let date = document.getElementById('workDate').value;
     let dayData = allData.filter(i => i.date === date);
@@ -187,7 +214,7 @@ window.loadDataByDate = function() {
             <b>${i.type=='income'?'+':'-'}${i.money.toLocaleString()}đ 
             <button onclick="deleteHistory('${i.cloudId}')" style="border:none; background:none; cursor:pointer;">🗑️</button></b>
         </li>`;
-    }).join(''); // Không cần reverse vì Firestore query đã orderBy desc
+    }).join('');
     
     document.getElementById('totalIncomeText').innerText = inc.toLocaleString() + "đ";
     document.getElementById('totalExpenseText').innerText = exp.toLocaleString() + "đ";
@@ -232,5 +259,4 @@ window.exportToExcel = function() {
     link.click();
 };
 
-// Khởi chạy
 renderMenu(); renderTables();
