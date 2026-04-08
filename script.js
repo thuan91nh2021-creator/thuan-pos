@@ -61,7 +61,7 @@ let chart;
 
 document.getElementById('workDate').valueAsDate = new Date();
 
-// --- 4. XỬ LÝ ĐĂNG NHẬP (TIẾNG VIỆT) ---
+// --- 4. XỬ LÝ ĐĂNG NHẬP ---
 window.chuyenCheDo = (laDangNhap) => {
     document.getElementById('tieuDeXacThuc').innerText = laDangNhap ? "Đăng nhập" : "Đăng ký tài khoản";
     document.getElementById('cumNutDangNhap').style.display = laDangNhap ? "block" : "none";
@@ -79,22 +79,22 @@ window.xuLyXacThuc = async (loai) => {
         } else {
             await signInWithEmailAndPassword(auth, email, pass);
         }
-    } catch (l) { alert("Lỗi: " + l.message); }
+    } catch (l) { alert("Lỗi xác thực: " + l.message); }
 };
 
 window.dangXuat = () => { if(confirm("Bạn muốn đăng xuất?")) signOut(auth); };
 
-// --- 5. KIỂM TRA TRẠNG THÁI & ĐỒNG BỘ DỮ LIỆU RIÊNG TƯ ---
+// --- 5. KIỂM TRA TRẠNG THÁI & ĐỒNG BỘ ---
 onAuthStateChanged(auth, (user) => {
     if (user) {
         nguoiDungHienTai = user;
         document.getElementById('manHinhXacThuc').style.display = 'none';
+        renderMenu(); renderTables(); // Chỉ chạy khi đã đăng nhập
         
-        // Lấy dữ liệu Cloud (chỉ của riêng người dùng này)
         const q = query(collection(db, "transactions"), where("userId", "==", user.uid), orderBy("timestamp", "desc"));
         onSnapshot(q, (snapshot) => {
             allData = snapshot.docs.map(doc => ({ cloudId: doc.id, ...doc.data() }));
-            loadDataByDate();
+            window.loadDataByDate();
         });
     } else {
         nguoiDungHienTai = null;
@@ -102,7 +102,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// --- 6. QUẢN LÝ GIAO DỊCH (LƯU LÊN MÂY) ---
+// --- 6. QUẢN LÝ GIAO DỊCH ---
 async function luuGiaoDichCloud(noiDung, soTien, loai) {
     if (!nguoiDungHienTai) return;
     const duLieu = {
@@ -119,13 +119,13 @@ async function luuGiaoDichCloud(noiDung, soTien, loai) {
 }
 
 window.deleteHistory = async (cloudId) => {
-    if(confirm("Xóa giao dịch vĩnh viễn trên Cloud?")) {
+    if(confirm("Xóa giao dịch vĩnh viễn?")) {
         await deleteDoc(doc(db, "transactions", cloudId));
     }
 };
 
 window.addManualTransaction = function(type) {
-    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi (Vd: Nhập hàng):");
+    let reason = prompt(type === 'income' ? "Nội dung thu khác:" : "Nội dung chi:");
     let money = parseInt(prompt("Số tiền (VNĐ):"));
     if (reason && !isNaN(money)) {
         let now = new Date();
@@ -134,7 +134,7 @@ window.addManualTransaction = function(type) {
     }
 };
 
-// --- 7. QUẢN LÝ BÁN HÀNG TẠI BÀN ---
+// --- 7. QUẢN LÝ BÁN HÀNG ---
 window.updateMenu = function() {
     let name = document.getElementById('newMenuName').value;
     let price = parseInt(document.getElementById('newMenuPrice').value);
@@ -145,7 +145,9 @@ window.updateMenu = function() {
 };
 
 function renderMenu() {
-    document.getElementById('menuGrid').innerHTML = menu.map(item => `
+    const grid = document.getElementById('menuGrid');
+    if(!grid) return;
+    grid.innerHTML = menu.map(item => `
         <div class="menu-item" onclick="addToCart(${item.id})">${item.name}<br><b>${item.price.toLocaleString()}đ</b></div>
     `).join('');
 }
@@ -157,13 +159,13 @@ window.addToCart = function(prodId) {
     }
     const item = menu.find(p => p.id === prodId);
     tables[selectedTable].push({...item, cartId: Date.now()});
-    renderCart(); renderTables(); selectTable(selectedTable);
+    renderCart(); renderTables(); window.selectTable(selectedTable);
 };
 
 window.removeFromCart = function(cartId) {
     tables[selectedTable] = tables[selectedTable].filter(i => i.cartId !== cartId);
     if (tables[selectedTable].length === 0) tableStartTime[selectedTable] = null;
-    renderCart(); renderTables(); selectTable(selectedTable);
+    renderCart(); renderTables(); window.selectTable(selectedTable);
 };
 
 function renderCart() {
@@ -186,8 +188,9 @@ window.showQR = function() {
     document.getElementById('qrArea').style.display = "block";
 };
 
-window.confirmQR = function() { checkout("VietQR"); };
+window.confirmQR = function() { window.checkout("VietQR"); };
 window.checkout = function(method) {
+    if(!selectedTable) return;
     let total = tables[selectedTable].reduce((s, i) => s + i.price, 0);
     let details = tables[selectedTable].map(i => i.name).join(", ");
     let end = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -224,7 +227,9 @@ window.loadDataByDate = function() {
 };
 
 function updateCharts(inc, exp) {
-    let ctx1 = document.getElementById("chart");
+    const canvas = document.getElementById("chart");
+    if (!canvas) return;
+    let ctx1 = canvas.getContext("2d");
     if (chart) chart.destroy();
     chart = new Chart(ctx1, {
         type: 'doughnut',
@@ -242,7 +247,9 @@ window.selectTable = function(id) {
 };
 
 function renderTables() {
-    document.getElementById('tableGrid').innerHTML = Object.keys(tables).map(id => `
+    const grid = document.getElementById('tableGrid');
+    if(!grid) return;
+    grid.innerHTML = Object.keys(tables).map(id => `
         <div class="table-card ${selectedTable == id ? 'active' : ''} ${tables[id].length > 0 ? 'occupied' : ''}" 
              onclick="selectTable(${id})">Bàn ${id} ${tableStartTime[id] ? '<br><small>'+tableStartTime[id]+'</small>' : ''}</div>
     `).join('');
@@ -258,5 +265,3 @@ window.exportToExcel = function() {
     link.download = `Bao_cao_${date}.csv`;
     link.click();
 };
-
-renderMenu(); renderTables();
